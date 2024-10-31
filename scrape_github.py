@@ -2,22 +2,32 @@ import requests
 import csv
 
 # Token and headers for authentication
-GITHUB_TOKEN = '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'  
+GITHUB_TOKEN = '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'  
 headers = {'Authorization': f'token {GITHUB_TOKEN}'}
 
-# Function to get users in Chicago with more than 100 followers
+# Function to get users in Chicago with more than 100 followers, with pagination
 def get_users():
     url = 'https://api.github.com/search/users'
-    params = {'q': 'location:Chicago followers:>100', 'per_page': 100}
-    response = requests.get(url, headers=headers, params=params)
+    users = []
+    page = 1
 
-    if response.status_code == 200:
-        users = response.json()['items']
-        print(f"Fetched {len(users)} users from Chicago with more than 100 followers.")
-        return users
-    else:
-        print("Failed to fetch users:", response.status_code, response.json())
-        return []
+    while True:
+        params = {'q': 'location:Chicago followers:>100', 'per_page': 100, 'page': page}
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            items = response.json().get('items', [])
+            if not items:  # Break if no more users are returned
+                break
+            users.extend(items)
+            print(f"Fetched {len(items)} users on page {page}.")
+            page += 1
+        else:
+            print("Failed to fetch users:", response.status_code, response.json())
+            break
+
+    print(f"Total users fetched: {len(users)}")
+    return users
 
 # Function to get detailed information about a user
 def get_user_details(username):
@@ -28,7 +38,7 @@ def get_user_details(username):
         return response.json()
     else:
         print(f"Failed to fetch details for {username}: {response.status_code}")
-        return None  # Return None if the call fails
+        return None
 
 # Function to save users to CSV
 def save_users_to_csv(users):
@@ -38,7 +48,7 @@ def save_users_to_csv(users):
         
         for user in users:
             user_details = get_user_details(user['login'])
-            if user_details:  # Check if user details were fetched successfully
+            if user_details:
                 writer.writerow([
                     user_details['login'],
                     user_details.get('name', ''),
@@ -58,19 +68,19 @@ def clean_company(company):
         return company.strip().lstrip('@').upper()
     return ''
 
-# Function to save repositories to CSV 
+# Function to get repositories for a user
 def get_repositories(username):
     url = f'https://api.github.com/users/{username}/repos'
-    params = {'per_page': 500}
-    response = requests.get(url, headers=headers)
+    params = {'per_page': 100}
+    response = requests.get(url, headers=headers, params=params)
 
     if response.status_code == 200:
-        print(f"Repositories for {username}: {response.json()}")  # Debugging line
         return response.json()
     else:
         print(f"Failed to fetch repositories for {username}: {response.status_code}")
-        return []  # Return an empty list if the call fails
-    
+        return []
+
+# Function to save repositories to CSV 
 def save_repositories_to_csv(users):
     with open('repositories.csv', mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
@@ -78,10 +88,7 @@ def save_repositories_to_csv(users):
 
         for user in users:
             repos = get_repositories(user['login'])
-            print(f"Fetching repositories for user: {user['login']}")  # Debugging line
-            print(f"Repositories fetched: {repos}")  # Debugging line to see the fetched repos
             if repos:
-                print(f"Fetched {len(repos)} repositories for user {user['login']}.")
                 for repo in repos:
                     writer.writerow([
                         user['login'],
@@ -92,10 +99,8 @@ def save_repositories_to_csv(users):
                         repo.get('language', ''),
                         repo.get('has_projects', False),
                         repo.get('has_wiki', False),
-                        repo.get('license', {}).get('name', '') if repo.get('license') is not None else ''
+                        repo.get('license', {}).get('name', '') if repo.get('license') else ''
                     ])
-            else:
-                print(f"No repositories found for user {user['login']}.")                
 
 if __name__ == "__main__":
     users = get_users()
